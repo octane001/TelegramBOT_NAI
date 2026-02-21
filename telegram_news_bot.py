@@ -393,8 +393,8 @@ async def post_init(application):
     scheduler.add_job(
         send_daily_news,
         "cron",
-        hour=11,
-        minute=5,
+        hour=8,
+        minute=59,
         args=[application]
     )
 
