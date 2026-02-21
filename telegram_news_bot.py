@@ -1,4 +1,6 @@
+import re
 import os
+import json
 import datetime
 import asyncio
 import feedparser
@@ -10,6 +12,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from openai import OpenAI
 from dotenv import load_dotenv
 from pydub import AudioSegment
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from pytz import timezone
 
 load_dotenv()
 
@@ -175,7 +179,6 @@ async def text_to_audio(text, filename, language):
 
     await communicate.save(filename)
 
-import re
 
 def clean_for_output(text):
     # Remove markdown bold/italic markers
@@ -208,6 +211,22 @@ async def send_long_message(update, text):
     max_length = 4000
     for i in range(0, len(text), max_length):
         await update.message.reply_text(text[i:i + max_length])
+
+# ==============================
+# Subscribe for daily News feature
+# ==============================
+
+SUBSCRIBERS_FILE = "subscribers.json"
+
+def load_subscribers():
+    if not os.path.exists(SUBSCRIBERS_FILE):
+        return {}
+    with open(SUBSCRIBERS_FILE,"r") as f:
+        return json.load(f)
+
+def save_subscribers(data):
+    with open (SUBSCRIBERS_FILE, "w") as f:
+        json.dump(data,f)
 
 
 # ==============================
@@ -279,6 +298,108 @@ async def briefing(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Always delete files after attempt
             cleanup_files(voice_file, final_audio)
 
+async def subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = str(update.effective_chat.id)
+
+    if not context.args:
+        await update.message.reply_text(
+            "Usage:\n/subscribe <topic> <language>\nExample:\n/subscribe AI en"
+        )
+        return
+
+    if context.args[-1].lower() in ["hi", "hindi"]:
+        language = "hindi"
+        topic = " ".join(context.args[:-1])
+    else:
+        language = "english"
+        topic = " ".join(context.args)
+
+    subscribers = load_subscribers()
+    subscribers[user_id] = {
+        "topic": topic,
+        "language": language
+    }
+
+    save_subscribers(subscribers)
+
+    await update.message.reply_text(
+        f"✅ Subscribed!\nYou will receive daily news on '{topic}' every morning at 9 AM."
+    )
+
+async def unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = str(update.effective_chat.id)
+    subscribers = load_subscribers()
+
+    if user_id in subscribers:
+        del subscribers[user_id]
+        save_subscribers(subscribers)
+        await update.message.reply_text("❌ You have been unsubscribed.")
+    else:
+        await update.message.reply_text("You are not subscribed.")
+        
+
+async def send_daily_news(application):
+
+    print("Scheduler triggered at:", datetime.datetime.now())
+
+    subscribers = load_subscribers()
+
+    for user_id, data in subscribers.items():
+        try:
+            topic = data["topic"]
+            language = data.get("language")
+
+            script = await generate_news_script(topic, language)
+            if not script:
+                continue
+
+            clean_script = clean_for_output(script)
+
+            # Send text
+            await application.bot.send_message(
+                chat_id=user_id,
+                text=clean_script
+            )
+
+            # Generate Audio
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            voice_file = os.path.join(OUTPUT_DIR, f"voice_{timestamp}.mp3")
+            final_file = os.path.join(OUTPUT_DIR, f"final_{timestamp}.mp3")
+
+            await text_to_audio(clean_script, voice_file, language)
+
+            # Add Background Music
+            final_audio = add_background_music(voice_file, final_file)
+
+            # Send Audio Properly
+            with open(final_audio, "rb") as audio:
+                await application.bot.send_audio(
+                    chat_id=user_id,
+                    audio=audio
+                )
+
+            # Cleanup
+            cleanup_files(voice_file, final_audio)
+
+        except Exception as e:
+            print("Error sending to", user_id, e)
+        
+            
+async def post_init(application):
+    scheduler = AsyncIOScheduler(timezone=timezone("Asia/Kolkata"))
+
+    scheduler.add_job(
+        send_daily_news,
+        "cron",
+        hour=11,
+        minute=5,
+        args=[application]
+    )
+
+    scheduler.start()
+    print("Scheduler started...")
 
 # ==============================
 # MAIN
@@ -288,16 +409,21 @@ def main():
     app = (
         ApplicationBuilder()
         .token(TOKEN)
+        .post_init(post_init)
         .read_timeout(60)
         .write_timeout(60)
         .connect_timeout(60)
         .pool_timeout(60)
         .build()
     )
+    
+    
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("briefing", briefing))
-
+    app.add_handler(CommandHandler("subscribe", subscribe))
+    app.add_handler(CommandHandler("unsubscribe", unsubscribe))
+    
     print("Bot running...")
 
     while True:

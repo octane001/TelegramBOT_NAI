@@ -6,3 +6,4 @@ edge-tts>=6.1.9
 beautifulsoup4>=4.12.2
 pydub>=0.25.1
 httpx>=0.25.0
+apscheduler==3.10.4
