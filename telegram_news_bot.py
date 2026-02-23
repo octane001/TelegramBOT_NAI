@@ -406,6 +406,9 @@ async def post_init(application):
 # ==============================
 
 def main():
+    port = int(os.environ.get("PORT", 10000))
+    webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
+
     app = (
         ApplicationBuilder()
         .token(TOKEN)
@@ -416,23 +419,19 @@ def main():
         .pool_timeout(60)
         .build()
     )
-    
-    
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("briefing", briefing))
     app.add_handler(CommandHandler("subscribe", subscribe))
     app.add_handler(CommandHandler("unsubscribe", unsubscribe))
-    
-    print("Bot running...")
 
-    while True:
-        try:
-            app.run_polling()
-        except Exception as e:
-            print("Network error, retrying in 5 seconds...", e)
-            import time
-            time.sleep(5)
+    print("Bot running in webhook mode...")
 
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        webhook_url=f"{webhook_url}/{TOKEN}",
+        url_path=TOKEN,
+    )
 if __name__ == "__main__":
     main()
