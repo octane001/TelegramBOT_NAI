@@ -1,0 +1,26 @@
+version: 2.1
+
+jobs:
+  build-and-test:
+    docker:
+      - image: cimg/python:3.12
+
+    steps:
+      - checkout
+
+      - run:
+          name: Install dependencies
+          command: |
+            pip install --upgrade pip
+            pip install -r requirements.txt
+
+      - run:
+          name: Run lint check (optional)
+          command: |
+            echo "Add flake8 or black here if needed"
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - build-and-test
