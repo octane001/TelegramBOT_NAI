@@ -1,0 +1,32 @@
+version: 2.1
+
+jobs:
+  build:
+    docker:
+      - image: cimg/python:3.12
+
+    steps:
+      - checkout
+
+      - run:
+          name: Install ffmpeg
+          command: |
+            sudo apt update
+            sudo apt install -y ffmpeg
+
+      - run:
+          name: Install dependencies
+          command: |
+            python -m pip install --upgrade pip
+            pip install -r requirements.txt
+
+      - run:
+          name: Run Bot
+          command: |
+            python telegram_news_bot.py
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - build
