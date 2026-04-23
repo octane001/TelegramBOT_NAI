@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: telegram-news-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python telegram_news_bot.py
+    envVars:
+      - key: TOKEN
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
